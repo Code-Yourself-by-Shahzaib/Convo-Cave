@@ -25,10 +25,15 @@ UPLOAD_FOLDER = os.path.join('static', 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 
+# 1. Bind Database to Flask
 db.init_app(app)
 
-# Initialize Socket.IO with threading mode for safe serverless operation on Vercel
+# 2. Force threading mode on Socket.IO to prevent serverless Lambda worker crashes on Vercel
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# 3. Automatically provision all 12 tables inside Neon PostgreSQL during Vercel cold-start imports
+with app.app_context():
+    db.create_all()
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -38,16 +43,6 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# ==========================================
-# ENTERPRISE SERVERLESS DB AUTO-INITIALIZATION
-# ==========================================
-@app.before_request
-def initialize_database():
-    # Automatically provisions all 12 tables inside Neon PostgreSQL on first request
-    db.create_all()
-    global initialize_database
-    initialize_database = lambda: None
 
 # ==========================================
 # AUTHENTICATION ROUTING
@@ -440,6 +435,5 @@ def handle_seen_ack(data):
 
         
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    # Fallback execution context for local PC testing
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
